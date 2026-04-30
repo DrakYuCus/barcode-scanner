@@ -11,7 +11,11 @@
 
 <script>
 const TOKEN = "dan123secure";
-const API_URL = "PASTE_YOUR_SCRIPT_URL_HERE";
+const API_URL = "https://script.google.com/macros/s/AKfycbxDNbAXSIPQziCLt2R3VFupWK0m_TP_aJ0Cob9hKpmFd6pQpsy3bqcSLjZ97pQHiWR3/exec";
+
+let lastScan = "";
+let lastScanTime = 0;
+const COOLDOWN = 2000;
 
 const scanner = new Html5Qrcode("reader");
 
@@ -19,6 +23,17 @@ scanner.start(
   { facingMode: "environment" },
   { fps: 10 },
   (decodedText) => {
+
+    const now = Date.now();
+
+    // Prevent rapid duplicate scans
+    if (decodedText === lastScan && (now - lastScanTime) < COOLDOWN) {
+      return;
+    }
+
+    lastScan = decodedText;
+    lastScanTime = now;
+
     fetch(API_URL, {
       method: "POST",
       body: JSON.stringify({
@@ -28,6 +43,8 @@ scanner.start(
     });
 
     if (navigator.vibrate) navigator.vibrate(100);
+
+    console.log("Sent:", decodedText);
   }
 );
 </script>

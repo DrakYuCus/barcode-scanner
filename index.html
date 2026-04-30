@@ -2,51 +2,176 @@
 <html>
 <head>
   <title>Barcode Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://unpkg.com/html5-qrcode"></script>
-</head>
-<body style="background:#111;color:white;text-align:center;padding:20px;">
 
-<h2>Scanner</h2>
-<div id="reader" style="width:100%"></div>
+  <style>
+    body {
+      margin: 0;
+      background: #0f172a;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    .container {
+      padding: 16px;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    #reader {
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      background: black;
+      border: 2px solid #334155;
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 14px;
+      margin-top: 14px;
+    }
+
+    .label {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    #lastBarcode {
+      font-size: 22px;
+      font-weight: bold;
+      word-break: break-all;
+    }
+
+    #status {
+      color: #22c55e;
+      font-weight: bold;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 12px;
+      background: #16a34a;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    button.secondary {
+      background: #334155;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Barcode Scanner</h1>
+    <div class="subtitle">Scan items to update your Google Sheet</div>
+
+    <div id="reader"></div>
+
+    <div class="card">
+      <div class="label">Last scanned</div>
+      <div id="lastBarcode">Nothing scanned yet</div>
+    </div>
+
+    <div class="card">
+      <div class="label">Status</div>
+      <div id="status">Scanner ready</div>
+    </div>
+
+    <button onclick="startScanner()">Start Scanner</button>
+    <button class="secondary" onclick="copyLast()">Copy Last Barcode</button>
+  </div>
 
 <script>
 const TOKEN = "dan123secure";
 const API_URL = "https://script.google.com/macros/s/AKfycbxDNbAXSIPQziCLt2R3VFupWK0m_TP_aJ0Cob9hKpmFd6pQpsy3bqcSLjZ97pQHiWR3/exec";
 
+let scanner;
+let scannerStarted = false;
 let lastScan = "";
 let lastScanTime = 0;
-const COOLDOWN = 2000;
+const COOLDOWN = 2500;
 
-const scanner = new Html5Qrcode("reader");
+function setStatus(text, good = true) {
+  const status = document.getElementById("status");
+  status.textContent = text;
+  status.style.color = good ? "#22c55e" : "#ef4444";
+}
 
-scanner.start(
-  { facingMode: "environment" },
-  { fps: 10 },
-  (decodedText) => {
+function startScanner() {
+  if (scannerStarted) return;
 
-    const now = Date.now();
+  scanner = new Html5Qrcode("reader");
 
-    // Prevent rapid duplicate scans
-    if (decodedText === lastScan && (now - lastScanTime) < COOLDOWN) {
-      return;
-    }
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 280, height: 160 } },
+    onScanSuccess
+  ).then(() => {
+    scannerStarted = true;
+    setStatus("Scanner running");
+  }).catch(err => {
+    setStatus("Camera failed to start", false);
+    console.error(err);
+  });
+}
 
-    lastScan = decodedText;
-    lastScanTime = now;
+function onScanSuccess(decodedText) {
+  const now = Date.now();
 
-    fetch(API_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        barcode: decodedText,
-        token: TOKEN
-      })
-    });
-
-    if (navigator.vibrate) navigator.vibrate(100);
-
-    console.log("Sent:", decodedText);
+  if (decodedText === lastScan && (now - lastScanTime) < COOLDOWN) {
+    return;
   }
-);
+
+  lastScan = decodedText;
+  lastScanTime = now;
+
+  document.getElementById("lastBarcode").textContent = decodedText;
+  setStatus("Sending to sheet...");
+
+  fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      barcode: decodedText,
+      token: TOKEN
+    })
+  })
+  .then(() => {
+    setStatus("Saved to Google Sheet");
+    if (navigator.vibrate) navigator.vibrate(120);
+  })
+  .catch(() => {
+    setStatus("Failed to send to sheet", false);
+  });
+}
+
+function copyLast() {
+  if (!lastScan) return;
+  navigator.clipboard.writeText(lastScan);
+  setStatus("Barcode copied");
+}
 </script>
 
 </body>

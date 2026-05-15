@@ -165,10 +165,16 @@ function startScanner() {
   scanner = new Html5Qrcode("reader");
 
   scanner.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 280, height: 160 } },
-    onScanSuccess
-  ).then(() => {
+  { facingMode: "environment" },
+  {
+    fps: 10,
+    qrbox: { width: 320, height: 140 },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13
+    ]
+  },
+  onScanSuccess
+).then(() => {
     scannerStarted = true;
     setStatus("Scanner running");
   }).catch(err => {

@@ -188,7 +188,15 @@ let lastScanTime = 0;
 
 let isSending = false;
 
-const COOLDOWN = 3000;
+let lockedBarcode = null;
+
+let barcodeVisibleUntil = 0;
+
+const COOLDOWN = 2000;
+
+const VISIBLE_GRACE_MS = 800;
+
+const AWAY_TIME_MS = 1200;
 
 function setStatus(text, good = true) {
 
@@ -224,7 +232,9 @@ function startScanner() {
       ]
     },
 
-    onScanSuccess
+    onScanSuccess,
+
+    onScanFailure
 
   ).then(() => {
 
@@ -245,70 +255,172 @@ function startScanner() {
 
 }
 
+function onScanFailure() {
+
+  releaseLockIfBarcodeGone();
+
+}
+
+function lockBarcode(text) {
+
+  lockedBarcode = text;
+
+  barcodeVisibleUntil =
+    Date.now() + VISIBLE_GRACE_MS;
+}
+
+function refreshVisibleBarcode(decodedText) {
+
+  if (
+    lockedBarcode &&
+    decodedText === lockedBarcode
+  ) {
+
+    barcodeVisibleUntil =
+      Date.now() + VISIBLE_GRACE_MS;
+  }
+}
+
+function releaseLockIfBarcodeGone() {
+
+  if (!lockedBarcode) return;
+
+  const now = Date.now();
+
+  if (
+    now >
+    (barcodeVisibleUntil + AWAY_TIME_MS)
+  ) {
+
+    lockedBarcode = null;
+
+    setStatus(
+      "Ready for next scan"
+    );
+  }
+}
+
 async function onScanSuccess(decodedText) {
+
+  refreshVisibleBarcode(decodedText);
 
   if (isSending) return;
 
+  if (
+    lockedBarcode &&
+    decodedText === lockedBarcode
+  ) {
+    return;
+  }
+
+  const now = Date.now();
+
+  if (
+    decodedText === lastScan &&
+    (now - lastScanTime) < COOLDOWN
+  ) {
+    return;
+  }
+
   isSending = true;
+
+  lastScan = decodedText;
+  lastScanTime = now;
+
+  lockBarcode(decodedText);
 
   try {
 
-    lastScan = decodedText;
-    lastScanTime = Date.now();
-
     let quantity = 1;
 
-    if (document.getElementById("manualQtyToggle").checked) {
+    if (
+      document.getElementById(
+        "manualQtyToggle"
+      ).checked
+    ) {
 
-      const entered = prompt(
-        "Enter quantity for " + decodedText,
-        "1"
-      );
+      const entered =
+        prompt(
+          "Enter quantity for " +
+          decodedText,
+          "1"
+        );
 
       if (entered === null) {
-        setStatus("Scan cancelled", false);
+
+        setStatus(
+          "Scan cancelled",
+          false
+        );
+
         isSending = false;
+
         return;
       }
 
       quantity = Number(entered);
 
-      if (!quantity || quantity < 1) {
-        setStatus("Invalid quantity", false);
+      if (
+        !quantity ||
+        quantity < 1
+      ) {
+
+        setStatus(
+          "Invalid quantity",
+          false
+        );
+
         isSending = false;
+
         return;
       }
     }
 
-    document.getElementById("lastBarcode").textContent = decodedText;
-    setStatus("Sending to sheet...");
+    document.getElementById(
+      "lastBarcode"
+    ).textContent = decodedText;
+
+    setStatus(
+      "Sending to sheet..."
+    );
 
     await fetch(API_URL, {
+
       method: "POST",
+
       body: JSON.stringify({
+
         barcode: decodedText,
+
         quantity: quantity,
+
         token: TOKEN
+
       })
+
     });
 
-    setStatus("Saved to Google Sheet +" + quantity);
+    setStatus(
+      "Saved to Google Sheet +" +
+      quantity
+    );
 
     if (navigator.vibrate) {
       navigator.vibrate(120);
     }
 
-    await scanner.stop();
-    scannerStarted = false;
-    isSending = false;
-
   } catch (err) {
 
     console.error(err);
-    setStatus("Failed to send to sheet", false);
-    isSending = false;
+
+    setStatus(
+      "Failed to send to sheet",
+      false
+    );
 
   }
+
+  isSending = false;
 }
 
 function copyLast() {
